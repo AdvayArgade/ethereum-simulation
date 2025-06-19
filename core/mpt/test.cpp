@@ -74,7 +74,77 @@ void test_mpt_nodes() {
     cout << "hash_node: " << branch->hash_node() << endl;
 }
 
+enum NodeType{
+    LEAF, EXT
+};
+
+vector<uint8_t> pack(vector<uint8_t>& path, NodeType type){
+    vector<uint8_t> packed;
+    if(path.size()==0) return packed;
+    int i = 0;
+    switch (type)
+    {
+        // leaf
+        case 0:
+            if(path.size()%2==0) packed.push_back(0x20);
+            else{
+                uint8_t first_byte = path[0];
+                first_byte |= 0x30;
+                i = 1;
+                packed.push_back(first_byte);
+            }
+            break;
+        
+        // ext
+        case 1:
+            if(path.size()%2==0) packed.push_back(0x00);
+            else{
+                uint8_t first_byte = path[0];
+                first_byte |= 0x10;
+                i = 1;
+                packed.push_back(first_byte);
+            }
+            break;
+        default:
+            break;
+    }
+    
+    for(; i<path.size()-1; i+=2){
+        packed.push_back((path[i]<<4) | path[i+1]);
+    }
+    return packed;
+}
+
 int main(){
-    test_mpt_nodes();
+
+    MPTObj<Int> trie;
+    vector<uint8_t> key = {0x12, 0x01, 0x34, 0x25};
+    Int value(1);
+    trie.root = trie.insert(trie.root, key, value, 0);
+    // if(shared_ptr<Leaf<Int>> leaf_ptr = dynamic_pointer_cast<Leaf<Int>>(trie.root)){
+    //     cout<<*leaf_ptr;
+    // }
+    // cout<<endl;
+
+    // trie.root = make_shared<Extension<Int>>(key, "abcd");
+    // trie.key_value_db[trie.root->hash_node()] = trie.root;
+
+    vector<uint8_t> key1 = {0x12, 0x01};
+    Int value1(2);
+    trie.root = trie.insert(trie.root, key1, value1, 0);
+
+    vector<uint8_t> key2 = {0x12, 0x01, 0x67};
+    Int value2(3);
+    trie.root = trie.insert(trie.root, key2, value2, 0);
+    cout<<"Root: "<<trie.root->to_string()<<endl;
+
+    // vector<uint8_t> key3 = {0x14, 0x56, 0x78};
+    // Int value3(4);
+    // trie.root = trie.insert(trie.root, key3, value3, 0);
+    trie.print_db();
+
+    auto val = trie.retrieve(key);
+    if(val) cout<<"Retrieved value: "<<val->to_string();
+
     return 0;
 }

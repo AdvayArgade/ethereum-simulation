@@ -4,11 +4,12 @@
 #include <memory>
 #include <variant>
 #include <vector>
+#include <ostream>
 using namespace std;
 
 namespace MPT{
     template <typename T>
-    class MPT;
+    class MPTObj;
 
     struct TreeType {
         virtual string to_string() const = 0;
@@ -17,7 +18,12 @@ namespace MPT{
 
     struct Int: public TreeType{
         int val;
+        Int(){}
+        Int(int _val): val(_val) {}
         string to_string() const override;
+        friend std::ostream& operator<<(std::ostream& os, const Int& i) {
+            return os << i.val;
+        }
     };
 
     struct Storage: public TreeType{
@@ -27,7 +33,7 @@ namespace MPT{
 
     struct State: public TreeType{
         uint64_t nonce, balance;
-        shared_ptr<MPT<Storage>> storage_root;
+        shared_ptr<MPTObj<Storage>> storage_root;
         string codeHash;
         string to_string() const override;
     };

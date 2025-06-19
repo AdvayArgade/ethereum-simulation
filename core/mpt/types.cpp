@@ -17,6 +17,6 @@ string MPT::Storage::to_string() const {
     }
 }
 
-string MPT::Int:: to_string() const {
+string MPT::Int::to_string() const {
     return std::to_string(this->val);
 }
