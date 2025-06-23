@@ -203,6 +203,24 @@ inline uint8_t get_kth_nibble(vu8& path, int k){
     return key_nibble;
 }
 
+vu8 get_suffix(vu8& path, int nibble){
+    vu8 suffix;
+    if(nibble==2*path.size()) return suffix;
+
+    for(int i = nibble; i<2*path.size(); i++){
+        uint8_t key_nibble = get_kth_nibble(path, i);
+        suffix.push_back(key_nibble);
+    }
+
+    return suffix;    
+}
+
+int get_offset(vu8 path){
+    if(path.empty()) return 0;
+    uint8_t parity = get_higher_nibble(path[0]);
+    return (parity % 2 == 0) ? 2 : 1;
+}
+
 vector<vu8> find_common_prefix(
     vu8& node_path, 
     vu8& key_path, 
@@ -211,14 +229,17 @@ vector<vu8> find_common_prefix(
     int& node_idx_out){
     vu8 path, key_suffix, node_suffix;
 
+    if(node_path.empty()) return {{}, get_suffix(key_path, start), {}};
+
     // ignore the prefix encoding in the leaf
     uint8_t parity = get_higher_nibble(node_path[0]);
     int offset = (parity % 2 == 0) ? 2 : 1;
+    if(key_path.empty()) return {{}, {}, get_suffix(node_path, offset)};
 
     int min_len = std::min(node_path.size()*2-offset, (key_path.size()*2-start));
 
     int key_idx = start, node_idx = offset;
-    if(start==0) key_idx = (parity==0) ? 2 : 1;
+    if(start==0) key_idx = get_offset(key_path);
 
     for(int i = 0; i<min_len; i++, node_idx++, key_idx++){
 
@@ -245,23 +266,6 @@ vector<vu8> find_common_prefix(
     key_idx_out = key_idx; node_idx_out = node_idx;
     vector<vu8> ret = {path, key_suffix, node_suffix};
     return ret;
-}
-
-vu8 get_suffix(vu8& path, int nibble){
-    vu8 suffix;
-    if(nibble==2*path.size()) return suffix;
-
-    for(int i = nibble; i<2*path.size(); i++){
-        uint8_t key_nibble = get_kth_nibble(path, i);
-        suffix.push_back(key_nibble);
-    }
-
-    return suffix;    
-}
-
-int get_offset(vu8 path){
-    uint8_t parity = get_higher_nibble(path[0]);
-    return (parity % 2 == 0) ? 2 : 1;
 }
 
 // pass the path with prefix encoded length in the first nibble: 
@@ -301,6 +305,7 @@ std::shared_ptr<Node<T>> MPTObj<T>::insert(shared_ptr<Node<T>> root, vu8& key, T
 
     // case 2: we stop at leaf
     else if(shared_ptr<Leaf<T>> leaf_ptr = dynamic_pointer_cast<Leaf<T>>(root)){
+        // cout<<"In leaf.\n";
         // remove the leaf from key value db
         key_value_db.erase(leaf_ptr->hash_node());
 
@@ -358,7 +363,7 @@ std::shared_ptr<Node<T>> MPTObj<T>::insert(shared_ptr<Node<T>> root, vu8& key, T
             auto key_leaf_ptr = std::make_shared<Leaf<T>>(packed_key_suffix, std::make_shared<T>(value));
 
             branch->branches[key_nibble] = key_leaf_ptr->hash_node();
-            branch->branches[16] = leaf_ptr->value;
+            branch->branches[16] = make_shared<T>(value);
 
             key_value_db[key_leaf_ptr->hash_node()] = key_leaf_ptr;
         }
@@ -384,6 +389,7 @@ std::shared_ptr<Node<T>> MPTObj<T>::insert(shared_ptr<Node<T>> root, vu8& key, T
 
     // case 3: encountering an extension node
     else if(shared_ptr<Extension<T>> ext_ptr = dynamic_pointer_cast<Extension<T>>(root)){
+        // cout<<"In ext\n";
         vu8 path, key_suffix, ext_suffix;
 
         int key_idx, ext_idx;
@@ -391,6 +397,9 @@ std::shared_ptr<Node<T>> MPTObj<T>::insert(shared_ptr<Node<T>> root, vu8& key, T
         path = path_suffix[0];
         key_suffix = path_suffix[1];
         ext_suffix = path_suffix[2];
+
+        // cout<<"Key suffix: "<<to_hex_string(key_suffix)<<endl;
+        // cout<<"Ext suffix: "<<to_hex_string(ext_suffix)<<endl;
 
         // case 3.1: full match with no remaining suffixes => update the value of the node ext points to
         if(key_suffix.size()==0 && ext_suffix.size()==0){
@@ -420,6 +429,7 @@ std::shared_ptr<Node<T>> MPTObj<T>::insert(shared_ptr<Node<T>> root, vu8& key, T
         else if(key_suffix.size()>0 && ext_suffix.size()==0){
             int offset = get_offset(ext_ptr->path);
             int jump = nibble + ext_ptr->path.size()*2 - offset + nibble_offset;
+            // cout<<"Jump: "<<jump<<endl;
 
             auto ret_ptr = insert(key_value_db[ext_ptr->hash], key, value, jump);
             key_value_db.erase(ext_ptr->hash);
@@ -435,7 +445,7 @@ std::shared_ptr<Node<T>> MPTObj<T>::insert(shared_ptr<Node<T>> root, vu8& key, T
         // case 3.3: partial match of ext path and key
         // => new ext with matched prefix and branch with ext of unmatched suffix of previous ext
         else if(ext_suffix.size()>0){
-            cout<<"\nPartial match in ext\n";
+            // cout<<"\nPartial match in ext\n";
             key_value_db.erase(ext_ptr->hash_node());
             
             uint8_t suffix_ext_pos = ext_suffix[0], leaf_pos;
@@ -470,6 +480,7 @@ std::shared_ptr<Node<T>> MPTObj<T>::insert(shared_ptr<Node<T>> root, vu8& key, T
     
     // case 4: encountering a branch node 
     else if(shared_ptr<Branch<T>> branch_ptr = dynamic_pointer_cast<Branch<T>>(root)){
+        // cout<<"In branch.\n";
         key_value_db.erase(branch_ptr->hash_node());
 
         // case 4.1: halt at branch => change the value
@@ -480,13 +491,17 @@ std::shared_ptr<Node<T>> MPTObj<T>::insert(shared_ptr<Node<T>> root, vu8& key, T
         // case 4.2: either recur or create leaf
         else{
             if(nibble==0) nibble += nibble_offset;
+            // cout<<"Nibble: "<<nibble<<endl;
             uint8_t key_nibble = (nibble%2==0) ? get_higher_nibble(key[nibble/2]) : get_lower_nibble(key[nibble/2]);
+            // cout<<"Key Nibble: "<<key_nibble<<endl;
             auto child = branch_ptr->branches[key_nibble];
             bool make_leaf = false;
 
             if(holds_alternative<shared_ptr<Node<T>>>(child)){
                 auto next_ptr = get<shared_ptr<Node<T>>>(child);
+                
                 if(next_ptr!=nullptr){
+                    cout<<"Branch holds non-null shared_ptr<Node<T>> at "<<int(key_nibble)<<endl;
                     auto ret_ptr = insert(next_ptr, key, value, nibble+1);
                     branch_ptr->branches[key_nibble] = ret_ptr->hash_node();
                 }
@@ -524,27 +539,35 @@ shared_ptr<T> MPTObj<T>::retrieve(vu8& key){
     int index = get_offset(key);
     auto curr = root;
 
-    while(index<key.size()*2){
-        if(!curr) return nullptr;
+    while(index<=key.size()*2){
+        if(!curr){
+            cout<<"curr is null.\n";
+            return nullptr;
+        } 
 
+        // cout<<"Curr: "<<curr->to_string()<<endl;
         // case 1: leaf
         if(shared_ptr<Leaf<T>>leaf_ptr = dynamic_pointer_cast<Leaf<T>>(curr)){
+            // cout<<"In leaf\n";
             int dummy = 0;
             auto path_suffix = find_common_prefix(leaf_ptr->path, key, index, index, dummy);
             vu8 key_suffix = path_suffix[1];
             vu8 leaf_suffix = path_suffix[2];
 
             if(key_suffix.size()==0 && leaf_suffix.size()==0) return leaf_ptr->value;
-            else return nullptr;
+            return nullptr;
         }
 
         // case 2: ext
         if(shared_ptr<Extension<T>>ext_ptr = dynamic_pointer_cast<Extension<T>>(curr)){
+            // cout<<"In ext\n";
             int dummy = 0;
             auto path_suffix = find_common_prefix(ext_ptr->path, key, index, index, dummy);
             vu8 key_suffix = path_suffix[1];
             vu8 ext_suffix = path_suffix[2];
 
+            // cout<<"Key suffix: "<<to_hex_string(key_suffix)<<endl;
+            // cout<<"Ext suffix: "<<to_hex_string(ext_suffix)<<endl;
             // case 2.1: unmatched ext suffix => invalid key
             if(ext_suffix.size()>0) return nullptr;
 
@@ -569,7 +592,23 @@ shared_ptr<T> MPTObj<T>::retrieve(vu8& key){
 
         // case 3: branch
         if(shared_ptr<Branch<T>>branch_ptr = dynamic_pointer_cast<Branch<T>>(curr)){
-            if(index==key.size()*2-1) return get<shared_ptr<T>>(branch_ptr->branches[16]);
+            // cout<<"In branch\n";
+            if(index==key.size()*2){
+                auto child = branch_ptr->branches[16];
+                if(holds_alternative<shared_ptr<T>>(child)){
+                    return get<shared_ptr<T>>(child);
+                }
+                else if(holds_alternative<shared_ptr<Node<T>>>(child)){
+                    cout<<"17th child overwritten as shared_ptr<Node<T>>.\n";
+                    auto child_ptr = get<shared_ptr<Node<T>>>(child);
+                    if(child_ptr==nullptr) cout<<"It is null.\n";
+                    return nullptr;
+                }
+                else if(holds_alternative<string>(child)){
+                    cout<<"17th child overwritten as string.\n";
+                    return nullptr;
+                }
+            } 
             else {
                 auto child = branch_ptr->branches[get_kth_nibble(key, index++)];
 

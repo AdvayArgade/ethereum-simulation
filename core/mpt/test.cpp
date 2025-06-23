@@ -1,33 +1,12 @@
-// #include "mpt.hpp"
-// #include <iostream>
-// using namespace std;
-
-// // write to_string for Storage and use that instead of int
-// int main(){
-//     MPT::Node<int>* node_ptr = new MPT::Branch<int>();
-//     for(int i = 0; i<6; i++){
-//         variant<shared_ptr<MPT::Node<int>>, shared_ptr<int>, string> var = make_shared<MPT::Node<int>>(nullptr);
-//         if(MPT::Branch<int>* branch_ptr = dynamic_cast<MPT::Branch<int>*>(node_ptr)){
-//             branch_ptr->branches[i] = var;
-//         }
-//     }
-
-//     for(int i = 6; i<8; i++){
-//         MPT::Leaf<int>* leaf_ptr = new MPT::Leaf<int>();
-//         leaf_ptr->path = {1, 2, 3};
-//         leaf_ptr->value = make_shared<int>(10);
-//         variant<shared_ptr<MPT::Node<int>>, shared_ptr<int>, string> var = make_shared<MPT::Node<int>>();
-//         if(MPT::Branch<int>* branch_ptr = dynamic_cast<MPT::Branch<int>*>(node_ptr)){
-//             branch_ptr->branches[i] = var;
-//         }
-//     }
-// }
-
 #include "types.hpp"
 #include "mpt.hpp"
 #include <iostream>
 #include <memory>
 #include <vector>
+#include <random>
+#include <sstream>
+#include <chrono>
+#include <fstream>
 
 using namespace std;
 using namespace MPT;
@@ -115,36 +94,127 @@ vector<uint8_t> pack(vector<uint8_t>& path, NodeType type){
     return packed;
 }
 
+std::string to_hex_vector(vector<uint8_t> vec){
+    std::ostringstream oss;
+    for (uint8_t vu8 : vec) {
+        oss << std::hex << std::setw(2) << std::setfill('0') << int(vu8) << " ";
+    }
+    return oss.str();
+}
+
+void save_vecvec(const std::vector<std::vector<uint8_t>>& data, const std::string& filename) {
+    std::ofstream out(filename, std::ios::binary);
+    size_t outer_size = data.size();
+    out.write(reinterpret_cast<const char*>(&outer_size), sizeof(outer_size));
+    for (const auto& inner : data) {
+        size_t inner_size = inner.size();
+        out.write(reinterpret_cast<const char*>(&inner_size), sizeof(inner_size));
+        out.write(reinterpret_cast<const char*>(inner.data()), inner_size);
+    }
+    out.close();
+}
+
+std::vector<std::vector<uint8_t>> load_vecvec(const std::string& filename) {
+    std::ifstream in(filename, std::ios::binary);
+    size_t outer_size;
+    in.read(reinterpret_cast<char*>(&outer_size), sizeof(outer_size));
+
+    std::vector<std::vector<uint8_t>> data(outer_size);
+    for (size_t i = 0; i < outer_size; ++i) {
+        size_t inner_size;
+        in.read(reinterpret_cast<char*>(&inner_size), sizeof(inner_size));
+        data[i].resize(inner_size);
+        in.read(reinterpret_cast<char*>(data[i].data()), inner_size);
+    }
+    in.close();
+    return data;
+}
+
 int main(){
 
     MPTObj<Int> trie;
-    vector<uint8_t> key = {0x12, 0x01, 0x34, 0x25};
-    Int value(1);
-    trie.root = trie.insert(trie.root, key, value, 0);
-    // if(shared_ptr<Leaf<Int>> leaf_ptr = dynamic_pointer_cast<Leaf<Int>>(trie.root)){
-    //     cout<<*leaf_ptr;
-    // }
-    // cout<<endl;
+    // vector<uint8_t> key = {0x12, 0x01, 0x34, 0x25};
+    // Int value(1);
+    // trie.root = trie.insert(trie.root, key, value, 0);
+    // // if(shared_ptr<Leaf<Int>> leaf_ptr = dynamic_pointer_cast<Leaf<Int>>(trie.root)){
+    // //     cout<<*leaf_ptr;
+    // // }
+    // // cout<<endl;
 
-    // trie.root = make_shared<Extension<Int>>(key, "abcd");
-    // trie.key_value_db[trie.root->hash_node()] = trie.root;
+    // // trie.root = make_shared<Extension<Int>>(key, "abcd");
+    // // trie.key_value_db[trie.root->hash_node()] = trie.root;
 
-    vector<uint8_t> key1 = {0x12, 0x01};
-    Int value1(2);
-    trie.root = trie.insert(trie.root, key1, value1, 0);
+    // vector<uint8_t> key1 = {0x12, 0x01};
+    // Int value1(2);
+    // trie.root = trie.insert(trie.root, key1, value1, 0);
 
-    vector<uint8_t> key2 = {0x12, 0x01, 0x67};
-    Int value2(3);
-    trie.root = trie.insert(trie.root, key2, value2, 0);
-    cout<<"Root: "<<trie.root->to_string()<<endl;
+    // vector<uint8_t> key2 = {0x12, 0x01, 0x67};
+    // Int value2(3);
+    // trie.root = trie.insert(trie.root, key2, value2, 0);
 
     // vector<uint8_t> key3 = {0x14, 0x56, 0x78};
     // Int value3(4);
+    // vector<uint8_t> key4 = {0x00, 0x58, 0x96};
+    // Int value4(5);
     // trie.root = trie.insert(trie.root, key3, value3, 0);
-    trie.print_db();
+    // trie.root = trie.insert(trie.root, key4, value4, 0);
 
-    auto val = trie.retrieve(key);
-    if(val) cout<<"Retrieved value: "<<val->to_string();
+    // vector<vector<uint8_t>> keys = {{0x13, 0x35, 0x56, 0x57, 0x28, 0x90}, {0x12, 0x01, 0x10, 0x43}, {0x00, 0x83, 0x51, 0x95}, {0x13, 0x33, 0x47}, {0x00, 0x58, 0x96}};
+    vector<Int> values;
 
+    std::mt19937 gen(std::chrono::steady_clock::now().time_since_epoch().count());
+    std::uniform_int_distribution<> len_dist(5, 25);     // reasonable length
+    std::uniform_int_distribution<> val_dist(0, 15);     // values in [0, 15]
+
+    std::vector<std::vector<uint8_t>> keys;
+    for (int i = 0; i < 1000; ++i) {
+        int len = len_dist(gen);
+        std::vector<uint8_t> key;
+        for (int j = 0; j < len; ++j) {
+            key.push_back(static_cast<uint8_t>(val_dist(gen)));
+        }
+        keys.push_back(pack(key, EXT));
+        values.push_back(Int(i+1));
+    }
+
+    save_vecvec(keys, "keys.bin");
+    // auto keys = load_vecvec("keys.bin");
+    // for(int i = 0; i<keys.size(); i++) values.push_back(Int(i+1));
+    
+    // Optional: print generated keys
+    // for (const auto& key : keys) {
+    //     cout<<to_hex_vector(key)<<endl;
+    // }
+
+    for(int i = 0; i<keys.size(); i++)
+    {
+        trie.root = trie.insert(trie.root, keys[i], values[i], 0);
+    }
+    cout<<"----------------Insertion finished.------------------\n";
+
+    // cout<<"Root: "<<trie.root->to_string()<<endl;
+    // trie.print_db();
+
+    int num_passed = 0, num_failed = 0;
+    for(int i = 0; i<keys.size(); i++){
+        auto val = trie.retrieve(keys[i]);
+        // if(val) cout<<"Retrieved value: "<<val->to_string()<<endl;
+        // else cout<<"Key does not exist.\n";
+        if(val){
+            if(val->to_string()!=to_string(i+1)){
+                cout<<"Failed for "<<to_hex_vector(keys[i])<<endl;
+                num_failed++;
+            }
+            else num_passed++;
+        }
+        else{
+            cout<<"Key does not exist for "<<to_hex_vector(keys[i])<<endl;
+            cout<<"Index: "<<i<<endl<<endl;
+            num_failed++;
+        }
+    }
+
+    cout<<num_passed<<" cases passed.\n";
+    
     return 0;
 }
